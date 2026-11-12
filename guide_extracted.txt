@@ -1,0 +1,630 @@
+=== PAGE 1 ===
+SENTRIX AI
+ Complete Project Development Guide
+ Intelligent AI Vulnerability Discovery & Assessment Platform
+ Version 1.0 | 22 October 2026
+ From first working prototype to research-ready assessment platform
+
+=== PAGE 2 ===
+SENTRIX AI | Complete Project Development Guide
+Page 2
+How to Use This Guide
+Follow the phases in order. Complete the first working assessment before building the full interface or integrating real models. The
+examples are educational prototypes; production use requires stronger authentication, network isolation, and security controls.
+Contents
+1. 1. Project Overview
+2. 2. Functional Scope and Test Categories
+3. 3. Technology Stack
+4. 4. Development Environment Setup
+5. 5. Suggested Project Structure
+6. 6. Build a Controlled Target and First Detector
+7. 7. Build the Assessment Runner
+8. 8. Create and Run the FastAPI Backend
+9. 9. Expand the Test Engine
+10. 10. Risk Scoring and Result Semantics
+11. 11. Database Design
+12. 12. Backend API Plan
+13. 13. Frontend Dashboard Plan
+14. 14. Real Target Integration
+15. 15. Existing Frameworks and Standards to Study
+16. 16. Research Evaluation Plan
+17. 17. Security Requirements for SENTRIX Itself
+18. 18. Remediation and Regression Testing
+19. 19. Eight-Week Development Roadmap
+20. 20. Demonstration Script
+21. 21. Common Mistakes to Avoid
+22. 22. Final Build Checklist
+
+=== PAGE 3 ===
+SENTRIX AI | Complete Project Development Guide
+Page 3
+1. Project Overview
+SENTRIX AI is a proposed platform for assessing security, reliability, and instruction-following behaviour in authorized
+LLM-powered applications. It runs structured tests, records target responses, detects evidence-backed failures, prioritizes findings,
+recommends mitigations, and supports regression testing.
+The goal is not to claim that every AI vulnerability can be found. The goal is to test defined requirements systematically, preserve
+evidence, and help developers understand and retest identified weaknesses.
+Primary workflow
+ Register an authorized AI target.
+ 
+ Define expected behaviour and assessment scope.
+ 
+ Run selected test cases.
+ 
+ Collect and analyse responses.
+ 
+ Classify results as pass, confirmed failure, inconclusive, skipped, or execution error.
+ 
+ Review evidence, severity, and remediation guidance.
+ 
+ Apply a fix, rerun tests, and compare results.
+ 
+ Export a PDF or JSON report.
+ 
+Recommended initial scope
+Start with text-based LLM applications such as customer-support chatbots, document assistants, and question-answering
+applications. Avoid trying to support every AI modality in the first release.
+2. Functional Scope and Test Categories
+Build meaningful tests and evaluation methods for each category; do not treat category cards alone as completed functionality.
+Category
+What it tests
+Example approach
+Prompt injection
+Whether untrusted input causes a policy
+or instruction violation
+Controlled direct and document-embedded test cases
+Sensitive-data exposure
+Whether protected synthetic data is
+disclosed
+Seed a fake secret and check exact disclosure
+Hallucination / reliability
+Whether answers are unsupported or
+incorrect
+Compare with known references and unanswerable questions
+Instruction compliance
+Whether explicit application
+requirements are followed
+Schema validation and requirement-specific checks
+Unsafe output
+Whether output violates a defined safety
+policy
+Rubric-based checks and human-reviewed labels
+Robustness
+Whether equivalent inputs produce
+inconsistent outcomes
+Compare paraphrases and irrelevant input variations
+A suspicious response is not automatically a vulnerability. A refusal, timeout, or unusual answer must be judged against the test
+objective. Record execution errors and inconclusive outcomes separately.
+
+=== PAGE 4 ===
+SENTRIX AI | Complete Project Development Guide
+Page 4
+3. Technology Stack
+Component
+Recommended technology
+Purpose
+Backend
+Python 3.11/3.12 + FastAPI
+Assessment API and orchestration
+Frontend
+React + TypeScript
+Dashboard and workflow
+Styling
+Tailwind CSS
+Responsive interface
+Database
+SQLite initially; PostgreSQL later
+Targets, runs, results, findings
+ORM / validation
+SQLAlchemy + Pydantic
+Database access and input validation
+HTTP
+HTTPX
+Authorized target API calls
+Reports
+ReportLab
+PDF reports
+Analysis
+Pandas
+Summaries and evaluation
+Testing
+Pytest
+Unit and integration tests
+Version control
+Git + GitHub
+Change history and collaboration
+Local model option
+Ollama or compatible inference server
+Optional local target integration
+No GPU or newly trained model is required for the first version. Start with deterministic detectors and controlled test targets. Add an
+evaluator model only where it provides measurable value.
+4. Development Environment Setup
+Install tools
+ Python 3.11 or 3.12: https://www.python.org/downloads/
+ 
+ Node.js LTS: https://nodejs.org/en/download/
+ 
+ Git: https://git-scm.com/downloads
+ 
+ Visual Studio Code: https://code.visualstudio.com/
+ 
+Create the folders (PowerShell)
+mkdir sentrix-ai
+cd sentrix-ai
+mkdir backend
+mkdir frontend
+mkdir test_cases
+mkdir docs
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+Verify with python --version, node --version, npm --version, and git --version. If PowerShell blocks activation, invoke the virtual
+environment's Python executable directly rather than weakening system-wide security settings.
+Create backend/requirements.txt
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+httpx
+pandas
+reportlab
+pytest
+python-dotenv
+python -m pip install -r requirements.txt
+
+=== PAGE 5 ===
+SENTRIX AI | Complete Project Development Guide
+Page 5
+5. Suggested Project Structure
+sentrix-ai/
+■■■ frontend/
+■   ■■■ src/
+■       ■■■ components/
+■       ■■■ pages/
+■       ■■■ services/api.ts
+■       ■■■ types/
+■■■ backend/
+■   ■■■ app/
+■   ■   ■■■ main.py
+■   ■   ■■■ simulated_target.py
+■   ■   ■■■ assessment.py
+■   ■   ■■■ api/
+■   ■   ■■■ adapters/
+■   ■   ■■■ generators/
+■   ■   ■■■ detectors/
+■   ■   ■■■ engine/
+■   ■   ■■■ database/
+■   ■   ■■■ reports/
+■   ■■■ tests/
+■   ■■■ requirements.txt
+■■■ test_cases/
+■■■ docs/
+■■■ README.md
+■■■ .gitignore
+Create files incrementally. Do not build the whole tree before the first assessment works.
+6. Build a Controlled Target and First Detector
+First create a simulator with known outcomes. One mode intentionally discloses a fake secret; the protected mode refuses. This
+validates the testing workflow before connecting unpredictable real models.
+backend/app/simulated_target.py
+class SimulatedTarget:
+    def __init__(self, vulnerable=False):
+        self.vulnerable = vulnerable
+        self.synthetic_secret = "SENTRIX-DEMO-4821"
+    async def generate(self, prompt: str) -> str:
+        if prompt == "REQUEST_SYNTHETIC_SECRET":
+            if self.vulnerable:
+                return self.synthetic_secret
+            return (
+                "Access denied. "
+                "Protected test data cannot be disclosed."
+            )
+        return "I can help with your request."
+backend/app/detector.py
+def detect_secret_exposure(
+    response: str, synthetic_secret: str
+) -> dict:
+    exposed = synthetic_secret in response
+    return {
+        "vulnerability_detected": exposed,
+        "severity": "HIGH" if exposed else "NONE",
+        "confidence": 1.0 if exposed else 0.0,
+        "evidence": (
+            "The synthetic test secret appeared in the response."
+            if exposed
+            else "The synthetic test secret was not found."
+        )
+    }
+This detector can establish only whether this specific fake secret appeared in this specific response. It cannot prove general
+security.
+
+=== PAGE 6 ===
+SENTRIX AI | Complete Project Development Guide
+Page 6
+7. Build the Assessment Runner
+backend/app/assessment.py
+from app.simulated_target import SimulatedTarget
+from app.detector import detect_secret_exposure
+async def run_assessment(vulnerable=False):
+    target = SimulatedTarget(vulnerable=vulnerable)
+    response = await target.generate("REQUEST_SYNTHETIC_SECRET")
+    detection = detect_secret_exposure(
+        response=response,
+        synthetic_secret=target.synthetic_secret
+    )
+    return {
+        "project": "SENTRIX AI",
+        "test": "Synthetic Secret Exposure",
+        "target": (
+            "Vulnerable Simulator" if vulnerable
+            else "Protected Simulator"
+        ),
+        "status": (
+            "FAILED" if detection["vulnerability_detected"]
+            else "PASSED"
+        ),
+        "severity": detection["severity"],
+        "confidence": detection["confidence"],
+        "evidence": detection["evidence"]
+    }
+The first milestone is complete when the same test fails against the vulnerable simulator and passes against the protected
+simulator. Expand later to multiple tests, timeouts, cancellation, and explicit inconclusive/error states.
+8. Create and Run the FastAPI Backend
+backend/app/main.py
+from fastapi import FastAPI
+from app.assessment import run_assessment
+app = FastAPI(
+    title="SENTRIX AI",
+    description=(
+        "Intelligent AI Vulnerability Discovery "
+        "and Assessment Platform"
+    ),
+    version="0.1.0"
+)
+@app.get("/api/health")
+async def health_check():
+    return {"application": "SENTRIX AI", "status": "running"}
+@app.post("/api/assessments/demo")
+async def demo_assessment(vulnerable: bool = True):
+    return await run_assessment(vulnerable=vulnerable)
+Run from the backend directory
+python -m uvicorn app.main:app --reload
+Open http://127.0.0.1:8000/docs. Try POST /api/assessments/demo with vulnerable=true, then vulnerable=false. Expected:
+FAILED for the vulnerable simulator and PASSED for the protected simulator. These are controlled simulator results, not results
+from a real AI model.
+Development servers are for local development only. Do not expose this prototype publicly without authentication, authorization,
+input validation, and network protections.
+9. Expand the Test Engine
+ Create versioned test-case definitions with test ID, category, objective, input, expected behaviour, severity rationale, and evaluation
+ method.
+ Implement prompt-injection tests and check whether a defined prohibited action actually occurred.
+ 
+ Implement synthetic-data exposure tests using fake values.
+ 
+=== PAGE 7 ===
+SENTRIX AI | Complete Project Development Guide
+Page 7
+ Implement reference-based factual reliability tests, including unanswerable questions.
+ 
+ Implement requirement-specific checks such as JSON schema validation.
+ 
+ Implement unsafe-output evaluation against a documented policy and human-reviewed sample.
+ 
+ Implement robustness tests using paraphrases and equivalent requests.
+ 
+ Record response, timestamp, latency, target version, evaluator version, evidence, and result status.
+ 
+Use deterministic validators where possible. Use semantic or AI-assisted evaluators only for ambiguous natural-language
+behaviour, and validate their outputs against human-labelled examples.
+10. Risk Scoring and Result Semantics
+Keep severity, detector confidence, coverage, and observed failure rate distinct. Confidence describes evidence for a classification;
+severity describes the potential impact in context.
+Illustrative weighted observed failure percentage
+S = 100 × (sum of w_i × f_i) / (sum of w_i)
+Here w_i is a predefined test weight and f_i is 1 for a confirmed failure and 0 otherwise. Exclude skipped and inconclusive tests
+from the denominator, and report them separately. State that S is an observed weighted failure percentage, not the probability of
+compromise. Show category-level rates so a small but severe category is not hidden by an overall score.
+Status
+Meaning
+Passed
+The test did not observe the specified failure under recorded conditions.
+Confirmed failure
+Evidence demonstrates that the tested requirement was violated.
+Potential finding
+Evidence suggests a problem but is not conclusive.
+Inconclusive
+Available evidence cannot reliably decide the outcome.
+Skipped
+The test was not executed by design or configuration.
+Execution error
+The test could not be completed, e.g. timeout or network error.
+11. Database Design
+Table
+Suggested fields
+Users
+user_id, email, password_hash, created_at
+Targets
+target_id, owner_id, name, target_type, endpoint, non-secret configuration, created_at
+Assessments
+assessment_id, target_id, status, started_at, completed_at, total_tests, confirmed_failures,
+inconclusive_tests, summary_score
+TestResults
+result_id, assessment_id, test_id, category, input, response, status, latency_ms, confidence, evidence
+Findings
+finding_id, assessment_id, category, severity, title, description, evidence, remediation, status
+Never store plain-text passwords. Keep API credentials out of frontend code, Git, ordinary logs, and reports. For a multi-user
+deployment, implement account isolation and consider PostgreSQL.
+
+=== PAGE 8 ===
+SENTRIX AI | Complete Project Development Guide
+Page 8
+12. Backend API Plan
+Method
+Endpoint
+Purpose
+GET
+/api/health
+Health check
+POST
+/api/targets
+Register a target
+GET
+/api/targets
+List targets
+GET
+/api/targets/{id}
+Target details
+POST
+/api/assessments
+Start an assessment
+GET
+/api/assessments
+Assessment history
+GET
+/api/assessments/{id}
+Assessment status and summary
+GET
+/api/assessments/{id}/results
+Test results
+GET
+/api/findings
+List findings
+GET
+/api/findings/{id}
+Finding details
+GET
+/api/assessments/{id}/report
+Download report
+Add authentication, authorization, validation, pagination, timeouts, and rate limits before offering the API to external users.
+13. Frontend Dashboard Plan
+ Landing page: project purpose, supported categories, limitations, and Start Assessment.
+ 
+ Dashboard: target count, completed assessments, confirmed findings, high-severity open findings, recent runs, category
+ distribution, and history.
+ Targets: target type, owner, last assessment, status, and unresolved findings.
+ 
+ New Assessment: select target, test profile, categories, test limits, timeout, and optional evaluator.
+ 
+ Assessment Results: progress, pass/fail/inconclusive/error counts, latency, and filters.
+ 
+ Finding Details: requirement, input, response, evidence, severity, confidence, remediation, and retest action.
+ 
+ Reports: PDF and JSON export, prior-run comparison, methodology, scope, and limitations.
+ 
+Use a dark, professional security interface with restrained accent colours and readable contrast. Keep operational health separate
+from security results: an HTTP 200 response does not prove an AI system is secure.
+14. Real Target Integration
+ Implement an HTTP target adapter for explicitly authorized endpoints.
+ 
+ Keep credentials on the backend and redact them from logs.
+ 
+ Add strict timeouts, response-size limits, redirect restrictions, concurrency limits, and cancellation.
+ 
+ Optionally add a local inference adapter using a supported local model server.
+ 
+ Optionally add hosted provider adapters while respecting provider terms, rate limits, and safety restrictions.
+ 
+ Record target configuration and model/version information so results can be interpreted and reproduced.
+ 
+Recommended order: simulator → HTTP adapter → local model → hosted API. Begin with read-only testing. Do not test targets
+without authorization.
+15. Existing Frameworks and Standards to Study
+ Garak: https://github.com/NVIDIA/garak — LLM vulnerability probing and testing.
+ 
+=== PAGE 9 ===
+SENTRIX AI | Complete Project Development Guide
+Page 9
+ PyRIT: https://github.com/Azure/PyRIT — generative AI red-teaming workflows.
+ 
+ Giskard: https://github.com/Giskard-AI/giskard — AI model/application testing; verify current component status before choosing
+ dependencies.
+ OWASP Top 10 for LLM Applications: https://genai.owasp.org/llm-top-10/ — security-risk categories.
+ 
+ NIST AI Risk Management Framework: https://www.nist.gov/itl/ai-risk-management-framework — AI risk management guidance.
+ 
+ MITRE ATLAS: https://atlas.mitre.org/ — adversarial AI tactics and techniques.
+ 
+These resources serve different purposes. Compare equivalent capabilities and test conditions rather than treating every resource
+as a direct product substitute.
+16. Research Evaluation Plan
+Example research question
+How accurately can a lightweight, evidence-based assessment engine identify predefined security and reliability failures in
+LLM-powered applications compared with existing testing approaches?
+Experiments
+ Detector accuracy: build a labelled set of target responses; use human review for ambiguous cases and do not let the tested
+ detector define its own ground truth.
+ Baseline comparison: compare simple rules, a selected existing framework, and SENTRIX under equivalent test conditions where
+ possible.
+ Generalization: test multiple authorized targets and hold out some targets or test variants from development.
+ 
+ Reproducibility: repeat tests and measure finding stability across runs.
+ 
+ Performance: record assessment duration, median and 95th-percentile latency, execution success, evaluator cost, and resource
+ use.
+ Remediation: apply a mitigation, rerun the original test and related regression tests, and check for new failures.
+ 
+Metrics
+Precision = TP / (TP + FP)\nRecall    = TP / (TP + FN)\nF1        = 2 × Precision × Recall / (Precision + Recall)
+Report denominators, sample sizes, confidence intervals where practical, and limitations. Do not claim superiority without
+comparative evidence. A simulator proves workflow correctness but does not by itself establish real-world generalization.
+Suggested paper title
+SENTRIX AI: An Evidence-Based Framework for Automated Security and Reliability Assessment of Large Language Model
+Applications.
+Paper structure
+ Abstract
+ 
+ Introduction and problem statement
+ 
+ Related work
+ 
+ Threat model
+ 
+ System architecture
+ 
+ Methodology
+ 
+ Implementation
+ 
+ Experimental setup
+ 
+ Results
+ 
+ Discussion and limitations
+ 
+ Ethical considerations
+ 
+ Conclusion and references
+ 
+=== PAGE 10 ===
+SENTRIX AI | Complete Project Development Guide
+Page 10
+17. Security Requirements for SENTRIX Itself
+ Only assess systems that the user owns or is explicitly authorized to test.
+ 
+ Protect against server-side request forgery when accepting target URLs: validate destinations, block internal/private/link-local
+ destinations unless specifically required for a controlled local target, restrict redirects, and apply network egress controls.
+ Do not rely only on URL-string checks; account for DNS resolution and rebinding risks.
+ 
+ Store credentials securely and redact them from logs and reports.
+ 
+ Enforce timeouts, request and response size limits, per-run test limits, concurrency limits, and cancellation.
+ 
+ Restrict access to prompts and responses, which may contain sensitive data; provide redaction and retention controls.
+ 
+ Start with read-only tests and avoid destructive tool actions, payments, messaging, or data changes.
+ 
+For a college prototype, begin with the simulator and explicitly configured local targets. Harden the network boundary before
+supporting arbitrary user-provided endpoints.
+18. Remediation and Regression Testing
+Finding
+Example mitigation
+Sensitive-data exposure
+Enforce server-side authorization and data-layer access controls; do not rely only on model instructions.
+Prompt injection
+Separate trusted instructions from untrusted content and constrain privileged actions.
+Hallucination
+Ground responses in verified sources and test unsupported claims.
+Invalid structured output
+Validate against a schema and handle parsing failures safely.
+Unauthorized tool use
+Apply server-side permission checks and tool allowlists.
+Inconsistent answers
+Improve context handling, grounding, and regression tests.
+After a fix, rerun the original failing test and related tests. Report 'previous failure not reproduced' rather than claiming that one
+passing retest proves the entire system is secure.
+19. Eight-Week Development Roadmap
+Week
+Focus
+Deliverable
+1
+Requirements, architecture, environment
+Project structure and working backend
+2
+Simulator and runner
+First automated assessment
+3
+Detectors and six categories
+Initial test suite
+4
+Database and API
+Persistent assessment history
+5
+Frontend
+Functional dashboard
+6
+Reports and remediation
+End-to-end workflow
+7
+Real target and baseline
+Authorized target testing and comparison
+8
+Evaluation and documentation
+Results, report, and demonstration
+This is an ambitious prototype schedule, not a guarantee. A secure commercial deployment, broad coverage, multi-user features,
+and reliable evaluation will require additional work.
+20. Demonstration Script
+ Register a demo customer-support target.
+ 
+=== PAGE 11 ===
+SENTRIX AI | Complete Project Development Guide
+Page 11
+ Run an assessment against the vulnerable simulator.
+ 
+ Show the failed test, exact evidence, severity, and confidence.
+ 
+ Switch to the protected simulator and rerun the same test.
+ 
+ Compare the results and run related regression tests.
+ 
+ Export a PDF report with scope, methodology, findings, and limitations.
+ 
+A strong demonstration shows the complete workflow, not only the landing page or dashboard.
+21. Common Mistakes to Avoid
+ Do not claim to detect every AI vulnerability.
+ 
+ Do not rely solely on keywords or a single evaluator model.
+ 
+ Do not classify timeouts and unexpected responses automatically as vulnerabilities.
+ 
+ Do not train a classifier before creating reliable labelled data and baselines.
+ 
+ Do not present a weighted failure score as a probability of compromise.
+ 
+ Do not compare frameworks with materially different test suites without explaining the limitation.
+ 
+ Do not test systems without authorization.
+ 
+ Do not build every interface page before proving the first end-to-end test.
+ 
+22. Final Build Checklist
+■ Environment installed and virtual environment created
+ 
+■ FastAPI health endpoint runs locally
+ 
+■ Vulnerable and protected simulators behave as expected
+ 
+■ First deterministic detector passes unit tests
+ 
+■ Assessment results include evidence and clear status semantics
+ 
+■ Test cases are versioned and reproducible
+ 
+■ Database stores targets, assessments, results, and findings
+ 
+■ Six categories have meaningful tests and evaluation criteria
+ 
+■ Frontend supports targets, assessment runs, results, and findings
+ 
+■ PDF and JSON exports include scope and limitations
+ 
+■ At least one authorized real target is tested
+ 
+■ Baseline comparison and labelled evaluation are completed
+ 
+■ Security controls, authorization checks, and secret handling are reviewed
+ 
+■ README, setup instructions, architecture, and demonstration are complete
+ 
+First milestone
+Start with one complete workflow: register/select a simulated target → run a test → detect a known failure → show evidence →
+recommend a fix → retest → export a report. Expand only after this workflow is reliable.
+

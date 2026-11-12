@@ -1,0 +1,27 @@
+# Node dependencies & builds
+frontend/node_modules/
+node_modules/
+dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# Python
+__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# Databases & local state
+backend/sentrix.db
+sentrix.db
+*.sqlite
+*.sqlite3
+
+# Logs & temp
+*.log
+.env
+.env.local
