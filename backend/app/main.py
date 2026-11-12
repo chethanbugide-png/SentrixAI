@@ -1,9 +1,12 @@
-"""SENTRIX AI – FastAPI application entry point."""
+"""SENTRIX AI – FastAPI application entry point with unified React SPA serving."""
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.config import APP_NAME, APP_DESCRIPTION, APP_VERSION, CORS_ORIGINS
 from app.database.connection import create_tables, SessionLocal
@@ -25,7 +28,6 @@ from app.api.cli import router as cli_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
-    # Startup
     create_tables()
     db = SessionLocal()
     try:
@@ -33,7 +35,6 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     yield
-    # Shutdown (nothing to do)
 
 
 # Ensure database tables exist
@@ -46,20 +47,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-@app.get("/")
-def root_status():
-    """Root endpoint to confirm backend is healthy and direct users to docs or UI."""
-    return {
-        "status": "online",
-        "service": APP_NAME,
-        "version": APP_VERSION,
-        "api_docs": "/docs",
-        "health_check": "/api/health",
-        "dashboard_stats": "/api/dashboard/stats",
-        "frontend_url": "http://127.0.0.1:5173",
-        "message": "Sentrix AI Backend Engine is operational."
-    }
-
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -69,7 +56,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# Register API routers under /api
 app.include_router(health_router, prefix="/api")
 app.include_router(targets_router, prefix="/api")
 app.include_router(assessments_router, prefix="/api")
@@ -80,3 +67,21 @@ app.include_router(playground_router, prefix="/api")
 app.include_router(matrix_router, prefix="/api")
 app.include_router(remediation_router, prefix="/api")
 app.include_router(cli_router, prefix="/api")
+
+# Locate compiled React frontend bundle
+DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+
+if os.path.exists(DIST_DIR):
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Don't intercept API endpoints
+        if full_path.startswith("api/"):
+            return None
+        file_path = os.path.join(DIST_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
