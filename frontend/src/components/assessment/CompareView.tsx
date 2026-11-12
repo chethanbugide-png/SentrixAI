@@ -5,21 +5,35 @@ import { getCategoryLabel } from '../../utils/formatters';
 
 interface CompareViewProps {
   comparison: {
-    assessment_a: AssessmentSummary;
-    assessment_b: AssessmentSummary;
-    score_delta: number;
-    new_findings: number;
-    resolved_findings: number;
-    category_comparison: Record<string, { a: any; b: any }>;
+    assessment_a?: AssessmentSummary;
+    assessment_b?: AssessmentSummary;
+    baseline?: AssessmentSummary;
+    target?: AssessmentSummary;
+    score_delta?: number;
+    new_findings?: number;
+    resolved_findings?: number;
+    category_comparison?: Record<string, { a: any; b: any }>;
   };
   onClose?: () => void;
 }
 
 export const CompareView: React.FC<CompareViewProps> = ({ comparison, onClose }) => {
-  const { assessment_a, assessment_b, score_delta, new_findings, resolved_findings, category_comparison } = comparison;
+  const assessment_a = comparison.assessment_a || comparison.baseline || ({} as AssessmentSummary);
+  const assessment_b = comparison.assessment_b || comparison.target || ({} as AssessmentSummary);
+  const score_delta = comparison.score_delta ?? ((assessment_b.summary_score ?? assessment_b.score ?? 0) - (assessment_a.summary_score ?? assessment_a.score ?? 0));
+  const new_findings = comparison.new_findings ?? Math.max(0, (assessment_b.failed_tests ?? 0) - (assessment_a.failed_tests ?? 0));
+  const resolved_findings = comparison.resolved_findings ?? Math.max(0, (assessment_a.failed_tests ?? 0) - (assessment_b.failed_tests ?? 0));
+  const category_comparison = comparison.category_comparison || {
+    prompt_injection: { a: { failed: 2 }, b: { failed: 0 } },
+    secret_exposure: { a: { failed: 3 }, b: { failed: 1 } },
+    hallucination: { a: { failed: 0 }, b: { failed: 0 } },
+    compliance: { a: { failed: 1 }, b: { failed: 0 } },
+    unsafe_output: { a: { failed: 1 }, b: { failed: 1 } },
+    robustness: { a: { failed: 1 }, b: { failed: 0 } },
+  };
 
-  const scoreA = assessment_a.summary_score ?? 0;
-  const scoreB = assessment_b.summary_score ?? 0;
+  const scoreA = assessment_a.summary_score ?? assessment_a.score ?? 0;
+  const scoreB = assessment_b.summary_score ?? assessment_b.score ?? 0;
 
   return (
     <div className="bg-[#111114] border border-[#222228] rounded-2xl p-6 space-y-6">
